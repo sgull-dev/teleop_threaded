@@ -5,8 +5,8 @@
 #define DEAD_ZONE 15
 #define CE_PIN 9 
 #define CSN_PIN 10 
-#define INTERVAL_MS_SIGNAL_LOST 1000 
-#define INTERVAL_MS_SIGNAL_RETRY 250 
+#define INTERVAL_MS_SIGNAL_LOST 300
+#define INTERVAL_MS_SIGNAL_RETRY 125
 
 RF24 radio(CE_PIN, CSN_PIN); 
 const byte address[6] = "00001"; 
@@ -28,25 +28,12 @@ const int right2 = 7;
 const int rightPWM = 6;
 
 // Data
-int x = 0;
-int y = 0;
-
+int x1 = 0;
+int x2 = 0;
 void setup() {
-
     Serial.begin(115200); 
-    radio.begin(); 
-    //Append ACK packet from the receiving radio back to the transmitting radio 
-    radio.setAutoAck(false); //(true|false) 
-    //Set the transmission datarate 
-    radio.setDataRate(RF24_250KBPS); //(RF24_250KBPS|RF24_1MBPS|RF24_2MBPS) 
-    //Greater level = more consumption = longer distance 
-    radio.setPALevel(RF24_PA_MIN); //(RF24_PA_MIN|RF24_PA_LOW|RF24_PA_HIGH|RF24_PA_MAX) 
-    //Default value is the maximum 32 bytes1 
-    radio.setPayloadSize(sizeof(payload)); 
-    //Act as receiver 
-    radio.openReadingPipe(0, address); 
-    radio.startListening(); 
-   
+    setupRadio();
+    
     // Set all the motor control pins to outputs
     pinMode(leftPWM, OUTPUT);
     pinMode(rightPWM, OUTPUT);
@@ -60,9 +47,18 @@ void setup() {
     digitalWrite(left2, LOW);
     digitalWrite(right1, LOW);
     digitalWrite(right2, LOW);
-
-
 }
+
+void setupRadio() {
+    radio.begin(); 
+    radio.setAutoAck(false);
+    radio.setDataRate(RF24_250KBPS);
+    radio.setPALevel(RF24_PA_MIN);
+    radio.setPayloadSize(sizeof(payload)); 
+    radio.openReadingPipe(0, address); 
+    radio.startListening(); 
+}
+
 
 void loop () {
   
@@ -70,54 +66,74 @@ void loop () {
    if (radio.available() > 0) { 
      radio.read(&payload, sizeof(payload)); 
      Serial.println("Received"); 
-     Serial.print("x-axis:"); 
+     Serial.print("Controller 1:"); 
      Serial.println(payload.data1);
-     Serial.print("y-axis:"); 
+     Serial.print("Controller 2:"); 
      Serial.println(payload.data2);
      lastSignalMillis = currentMillis;
-     x = payload.data1
-     y = payload.data2
-   } 
-   if (currentMillis - lastSignalMillis > INTERVAL_MS_SIGNAL_LOST) { 
-     lostConnection(); 
-   }
-   
-
+     x1 = payload.data1;
+     x2 = payload.data2;
 
     // Left Motor Control
-    if (x < 511 - DEAD_ZONE) {
-  left_back();
-  int speed = (511-x)/2;
-  analogWrite(leftPWM, speed);
-    } else if (x > 511 + DEAD_ZONE) {
-  left_forward();
-  int speed = (x-512)/2;
-  analogWrite(leftPWM, speed);
+    if (x1 < 511 - DEAD_ZONE) {
+      left_back();
+      int speed = (511-x1)/2;
+      analogWrite(leftPWM, speed);
+    } else if (x1 > 511 + DEAD_ZONE) {
+      left_forward();
+      int speed = (x1-512)/2;
+      analogWrite(leftPWM, speed);
     } else {
-  left_stop();
+      left_stop();
     }
 
     // Right motor control 
-    if (y < 511 - DEAD_ZONE) {
+    if (x2 < 511 - DEAD_ZONE) {
         right_back();
-        int speed = (511 - y) / 2;
+        int speed = (511 - x2) / 2;
         analogWrite(rightPWM, speed);
-    } else if (y > 511 + DEAD_ZONE) {
+    } else if (x2 > 511 + DEAD_ZONE) {
         right_forward();
-        int speed = (y - 512) / 2;
+        int speed = (x2 - 512) / 2;
         analogWrite(rightPWM, speed);
     } else {
         right_stop();
     }
     
-    delay(100);  
+    delay(30); 
+   } 
+   if (currentMillis - lastSignalMillis > INTERVAL_MS_SIGNAL_LOST) { 
+     
+     left_stop();
+     right_stop();
+     lostConnection();
+   }
+   
+
+
+ 
 }
 
 void lostConnection() 
 { 
-   Serial.println("We have lost connection, preventing unwanted behavior"); 
-   delay(INTERVAL_MS_SIGNAL_RETRY); 
+   Serial.println("We have lost connection, preventing unwanted behavior");
+   reattemptConnection();
+   delay(INTERVAL_MS_SIGNAL_RETRY);
 } 
+
+void reattemptConnection() {
+  Serial.println("Connection lost. Attempting to reconnect...");
+  
+  // Power cycle the radio
+  radio.powerDown();
+  delay(50);
+  radio.powerUp();
+  
+  // Re-initialize the radio
+  setupRadio();
+  
+  Serial.println("Radio reinitialized. Listening for signals...");
+}
 
 
 // Functions for controlling motor directions
