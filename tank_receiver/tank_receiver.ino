@@ -99,19 +99,16 @@ void loop () {
     } else {
         right_stop();
     }
-    
     delay(30); 
    } 
    if (currentMillis - lastSignalMillis > INTERVAL_MS_SIGNAL_LOST) { 
-     
+     //Swapped these back this way; It's better if we stop the motors only after a attempt at reconnection
+     // If we instantly get a reconnection then we see no noticeable disconnect
+     // Otherwise If we instantly stop it on disconnect, we'll always see a slight pause on disconnect
+     lostConnection();
      left_stop();
      right_stop();
-     lostConnection();
    }
-   
-
-
- 
 }
 
 void lostConnection() 
@@ -122,8 +119,9 @@ void lostConnection()
 } 
 
 void reattemptConnection() {
+  //TODO: Could it be possible to do this without Power Cycling? Could be faster.
+
   Serial.println("Connection lost. Attempting to reconnect...");
-  
   // Power cycle the radio
   radio.powerDown();
   delay(50);
